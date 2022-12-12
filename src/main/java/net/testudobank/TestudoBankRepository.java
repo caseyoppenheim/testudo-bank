@@ -2,6 +2,7 @@ package net.testudobank;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
 
@@ -9,6 +10,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 public class TestudoBankRepository {
+  public static List<Map<String,Object>> interestLog = new ArrayList<>(); 
   public static String getCustomerPassword(JdbcTemplate jdbcTemplate, String customerID) {
     String getCustomerPasswordSql = String.format("SELECT Password FROM Passwords WHERE CustomerID='%s';", customerID);
     String customerPassword = jdbcTemplate.queryForObject(getCustomerPasswordSql, String.class);
@@ -92,6 +94,17 @@ public class TestudoBankRepository {
                                                               action,
                                                               amtInPennies);
     jdbcTemplate.update(insertRowToTransactionHistorySql);
+    //after this transaction has been added, need to run check and then potentially add interest if necessary
+    if(readyForInterest(jdbcTemplate, customerID) && getCustomerCashBalanceInPennies(jdbcTemplate, customerID) != 0 && action == "Deposit" && amtInPennies>=2000){
+      //this is where I will call the add interest function that
+      String interest = String.format("INSERT INTO TransactionHistory VALUES ('%s', '%s', '%s', %f);",
+                                                              customerID,
+                                                              timestamp,
+                                                              action,
+                                                              APYcalc(jdbcTemplate, customerID)); 
+      jdbcTemplate.update(interest); 
+      interestLog.add(getRecentTransactions(jdbcTemplate, customerID, 1).get(0));                                     
+    }
   }
 
   public static void insertRowToOverdraftLogsTable(JdbcTemplate jdbcTemplate, String customerID, String timestamp, int depositAmtIntPennies, int oldOverdraftBalanceInPennies, int newOverdraftBalanceInPennies) {
@@ -176,5 +189,38 @@ public class TestudoBankRepository {
     } else {
       return false;
     }
+  }
+
+  //Assignment #2
+  public static boolean readyForInterest(JdbcTemplate jdbcTemplate, String customerID){
+    String depositHistory = String.format("SELECT COUNT(*) FROM TransactionHistory WHERE CustomerID='%s' AND Action='Deposit' AND Amount>=2000;",
+                                                              customerID);
+    String overdrafted = String.format("SELECT * FROM OverdraftLogs WHERE CustomerID='%s';", customerID);
+
+    int sizeOfHist = jdbcTemplate.queryForObject(depositHistory, Integer.class);
+    List<Map<String,Object>> overdraftLog = getOverdraftLogs(jdbcTemplate, customerID);
+
+    if(overdraftLog.size() == 0 && sizeOfHist%5 == 0 && sizeOfHist!=0){
+      return true;
+    }else{
+      return false;
+    }
+  }
+
+  public static double APYcalc(JdbcTemplate jdbcTemplate, String customerID){
+    // String furthestTransaction = String.format("SELECT DATE(Timestamp) FROM TransactionHistory WHERE CustomerID='%s' ORDER BY Timestamp ASC LIMIT 1;", customerID);
+    // java.sql.Date date = jdbcTemplate.queryForObject(furthestTransaction, java.sql.Date);
+    // long millis = System.currentTimeMillis();
+    // java.sql.Date date = new java.sql.Date(millis);
+    // long diffInMillies = Math.abs(secondDate.getTime() - firstDate.getTime());
+    // int diff = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS);
+    // int years = diff/365; 
+
+    //I am very unsure if I'm supposed to be calculating compound interest or just apply 1.5 each time 
+
+    int balance = getCustomerCashBalanceInPennies(jdbcTemplate, customerID);
+    double interestAdd = .015*balance; 
+    return interestAdd;
+
   }
 }

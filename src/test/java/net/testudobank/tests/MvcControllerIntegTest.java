@@ -189,7 +189,10 @@ public class MvcControllerIntegTest {
     assertEquals(CUSTOMER1_EXPECTED_FINAL_BALANCE_IN_PENNIES, (int)customer1Data.get("Balance"));
 
     // verify that the Withdraw is the only log in TransactionHistory table
+    System.out.println("before transaction history check");
     assertEquals(1, transactionHistoryTableData.size());
+    System.out.println("after");
+
 
     // verify that the Withdraw's details are accurately logged in the TransactionHistory table
     Map<String,Object> customer1TransactionLog = transactionHistoryTableData.get(0);
@@ -1581,5 +1584,51 @@ public void testTransferPaysOverdraftAndDepositsRemainder() throws SQLException,
             .build();
     cryptoTransactionTester.test(cryptoTransaction);
   }
+
+  @Test
+  public void simpleInterest() throws ScriptException{
+    //initialize new customer
+    double CUSTOMER1_BALANCE = 0.0;
+    int CUSTOMER1_BALANCE_IN_PENNIES = MvcControllerIntegTestHelpers.convertDollarsToPennies(CUSTOMER1_BALANCE);
+    MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME, CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES);
+    //first test to make sure that interest is applied after 5 transactions of 20
+    double CUSTOMER1_AMOUNT_TO_DEPOSIT = 20.00; // user input is in dollar amount, not pennies.
+    User customer1DepositFormInputs = new User();
+    customer1DepositFormInputs.setUsername(CUSTOMER1_ID);
+    customer1DepositFormInputs.setPassword(CUSTOMER1_PASSWORD);
+    customer1DepositFormInputs.setAmountToDeposit(CUSTOMER1_AMOUNT_TO_DEPOSIT); 
+    for(int i = 0; i < 5; i++){
+      controller.submitDeposit(customer1DepositFormInputs);
+    }
+    // verify that there are 6 in TransactionHistory table after Deposit & interest
+    assertEquals(6, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TransactionHistory;", Integer.class));
+
+    //now test and make sure that interest is not applied after 5 transactions of less than 20
+    customer1DepositFormInputs.setAmountToDeposit(19.99);
+    for(int i = 0; i < 5; i++){
+      controller.submitDeposit(customer1DepositFormInputs);
+    }
+    System.out.println(jdbcTemplate.queryForList("SELECT * FROM TransactionHistory;"));
+    assertEquals(11, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TransactionHistory;", Integer.class));
+
+    //now test on an overdrafted client
+    User customer1WithdrawFormInputs = new User();
+    customer1WithdrawFormInputs.setUsername(CUSTOMER1_ID);
+    customer1WithdrawFormInputs.setPassword(CUSTOMER1_PASSWORD);
+    customer1WithdrawFormInputs.setAmountToWithdraw(1000.00);
+    controller.submitWithdraw(customer1WithdrawFormInputs);
+    //now deposit 5 more times again
+    customer1DepositFormInputs.setAmountToDeposit(CUSTOMER1_AMOUNT_TO_DEPOSIT); 
+    for(int i = 0; i < 5; i++){
+      controller.submitDeposit(customer1DepositFormInputs);
+    }
+    //make sure doesn't apply interest while in overdraft
+    assertEquals(5, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM OverdraftLogs;", Integer.class));
+    assertEquals(17, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TransactionHistory;", Integer.class));
+
+
+    
+  }
+
 
 }
