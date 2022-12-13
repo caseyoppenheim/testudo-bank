@@ -38,6 +38,12 @@ public class User {
   @Setter @Getter
   private String interestHist;
 
+  @Setter @Getter
+  private double score;
+
+
+  
+
   //// Dispute Fields ////
 
   @Setter @Getter

@@ -1590,7 +1590,9 @@ public void testTransferPaysOverdraftAndDepositsRemainder() throws SQLException,
     //initialize new customer
     double CUSTOMER1_BALANCE = 0.0;
     int CUSTOMER1_BALANCE_IN_PENNIES = MvcControllerIntegTestHelpers.convertDollarsToPennies(CUSTOMER1_BALANCE);
-    MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME, CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES);
+    MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME,
+    CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES, MvcControllerIntegTestHelpers.convertDollarsToPennies(0.0), 0, 0);
+    //MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME, CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES);
     //first test to make sure that interest is applied after 5 transactions of 20
     double CUSTOMER1_AMOUNT_TO_DEPOSIT = 20.00; // user input is in dollar amount, not pennies.
     User customer1DepositFormInputs = new User();
@@ -1618,9 +1620,9 @@ public void testTransferPaysOverdraftAndDepositsRemainder() throws SQLException,
     customer1WithdrawFormInputs.setAmountToWithdraw(1000.00);
     controller.submitWithdraw(customer1WithdrawFormInputs);
     //now deposit 5 more times again
-    customer1DepositFormInputs.setAmountToDeposit(CUSTOMER1_AMOUNT_TO_DEPOSIT); 
+    customer1WithdrawFormInputs.setAmountToDeposit(20.00); 
     for(int i = 0; i < 5; i++){
-      controller.submitDeposit(customer1DepositFormInputs);
+      controller.submitDeposit(customer1WithdrawFormInputs);
     }
     //make sure doesn't apply interest while in overdraft
     assertEquals(5, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM OverdraftLogs;", Integer.class));
@@ -1629,6 +1631,89 @@ public void testTransferPaysOverdraftAndDepositsRemainder() throws SQLException,
 
     
   }
+
+  //Final Project Integration Tests
+  public void simpleScore() throws ScriptException{
+    //initialize new customer
+    double CUSTOMER1_BALANCE = 0.0;
+    int CUSTOMER1_BALANCE_IN_PENNIES = MvcControllerIntegTestHelpers.convertDollarsToPennies(CUSTOMER1_BALANCE);
+    MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME,
+    CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES, MvcControllerIntegTestHelpers.convertDollarsToPennies(0.0), 0, 0);
+    //MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME, CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES);
+    //first test to make sure that score is calculated and interest is applied after 5 transactions of 20
+    double CUSTOMER1_AMOUNT_TO_DEPOSIT = 20.00; // user input is in dollar amount, not pennies.
+    User customer1DepositFormInputs = new User();
+    customer1DepositFormInputs.setUsername(CUSTOMER1_ID);
+    customer1DepositFormInputs.setPassword(CUSTOMER1_PASSWORD);
+    customer1DepositFormInputs.setAmountToDeposit(CUSTOMER1_AMOUNT_TO_DEPOSIT); 
+    for(int i = 0; i < 5; i++){
+      controller.submitDeposit(customer1DepositFormInputs);
+    }
+    // verify that there are 6 in TransactionHistory table after Deposit & interest
+    assertEquals(6, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TransactionHistory;", Integer.class));
+    assertEquals(8, customer1DepositFormInputs.getScore());
+
+    //now test and make sure that interest is not applied after 5 transactions of less than 20
+    customer1DepositFormInputs.setAmountToDeposit(19.99);
+    for(int i = 0; i < 5; i++){
+      controller.submitDeposit(customer1DepositFormInputs);
+    }
+    assertEquals(11, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TransactionHistory;", Integer.class));
+
+    //now test on an overdrafted client
+    User customer1WithdrawFormInputs = new User();
+    customer1WithdrawFormInputs.setUsername(CUSTOMER1_ID);
+    customer1WithdrawFormInputs.setPassword(CUSTOMER1_PASSWORD);
+    customer1WithdrawFormInputs.setAmountToWithdraw(1000.00);
+    controller.submitWithdraw(customer1WithdrawFormInputs);
+    //now deposit 5 more times again
+    customer1WithdrawFormInputs.setAmountToDeposit(20.00); 
+    for(int i = 0; i < 5; i++){
+      controller.submitDeposit(customer1WithdrawFormInputs);
+    }
+    //make sure doesn't apply interest while in overdraft & that score is reduced by 1 because of overdraft
+    assertEquals(5, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM OverdraftLogs;", Integer.class));
+    assertEquals(17, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TransactionHistory;", Integer.class));
+    assertEquals(7, customer1WithdrawFormInputs.getScore());
+  }
+
+  public void cryptoScore() throws ScriptException{
+    //initialize new customer
+    double CUSTOMER1_BALANCE = 0.0;
+    int CUSTOMER1_BALANCE_IN_PENNIES = MvcControllerIntegTestHelpers.convertDollarsToPennies(CUSTOMER1_BALANCE);
+    MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME,
+    CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES, MvcControllerIntegTestHelpers.convertDollarsToPennies(0.0), 0, 0);
+    //MvcControllerIntegTestHelpers.addCustomerToDB(dbDelegate, CUSTOMER1_ID, CUSTOMER1_PASSWORD, CUSTOMER1_FIRST_NAME, CUSTOMER1_LAST_NAME, CUSTOMER1_BALANCE_IN_PENNIES);
+    //first test to make sure that score is calculated and interest is applied after 5 transactions of 20
+    double CUSTOMER1_AMOUNT_TO_DEPOSIT = 20.00; // user input is in dollar amount, not pennies.
+    User customer1DepositFormInputs = new User();
+    customer1DepositFormInputs.setUsername(CUSTOMER1_ID);
+    customer1DepositFormInputs.setPassword(CUSTOMER1_PASSWORD);
+    customer1DepositFormInputs.setAmountToDeposit(CUSTOMER1_AMOUNT_TO_DEPOSIT); 
+    for(int i = 0; i < 5; i++){
+      controller.submitDeposit(customer1DepositFormInputs);
+    }
+    // verify that there are 6 in TransactionHistory table after Deposit & interest
+    assertEquals(6, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM TransactionHistory;", Integer.class));
+    assertEquals(8, customer1DepositFormInputs.getScore());
+
+   //now have user purchase crypto
+    customer1DepositFormInputs.setWhichCryptoToBuy("SOL");
+    customer1DepositFormInputs.setAmountToBuyCrypto(1.0);
+    controller.buyCrypto(customer1DepositFormInputs);
+    assertEquals(9, customer1DepositFormInputs.getScore());
+
+    customer1DepositFormInputs.setWhichCryptoToBuy("ETH");
+    customer1DepositFormInputs.setAmountToBuyCrypto(1.0);
+    controller.buyCrypto(customer1DepositFormInputs);
+    assertEquals(10, customer1DepositFormInputs.getScore());
+
+    customer1DepositFormInputs.setWhichCryptoToBuy("SOL");
+    customer1DepositFormInputs.setAmountToSellCrypto(1.0);
+    controller.sellCrypto(customer1DepositFormInputs);
+    assertEquals(9, customer1DepositFormInputs.getScore());
+  }
+  
 
 
 }

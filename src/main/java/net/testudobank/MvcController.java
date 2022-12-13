@@ -50,7 +50,7 @@ public class MvcController {
   public static String CRYPTO_HISTORY_SELL_ACTION = "Sell";
   public static String CRYPTO_HISTORY_BUY_ACTION = "Buy";
   public static Set<String> SUPPORTED_CRYPTOCURRENCIES = new HashSet<>(Arrays.asList("ETH", "SOL"));
-  private static double BALANCE_INTEREST_RATE = 1.015;
+  private static double BALANCE_INTEREST_RATE = 1.02;
 
   public MvcController(@Autowired JdbcTemplate jdbcTemplate, @Autowired CryptoPriceClient cryptoPriceClient) {
     this.jdbcTemplate = jdbcTemplate;
@@ -114,7 +114,14 @@ public class MvcController {
     User user = new User();
 		model.addAttribute("user", user);
 		return "withdraw_form";
-	}
+  }
+  
+  @GetMapping("/score")
+  public String showScore(Model model){
+    User user = new User();
+    model.addAttribute("user", user);
+    return "score_info";
+  }
 
   /**
    * HTML GET request handler that serves the "dispute_form" page to the user.
@@ -214,9 +221,10 @@ public class MvcController {
     }
 
     List<Map<String, Object>> interestLogs = TestudoBankRepository.interestLog; 
+
     String interestHistoryOutput = HTML_LINE_BREAK;
     for(Map<String, Object> interestLog : interestLogs){
-      interestHistoryOutput += interestLog + HTML_LINE_BREAK;
+      interestHistoryOutput += "Interest Rate: " + TestudoBankRepository.interestCalc(jdbcTemplate, user.getUsername()) + " " + interestLog + HTML_LINE_BREAK;
     }
 
 
@@ -247,6 +255,7 @@ public class MvcController {
     user.setEthPrice(cryptoPriceClient.getCurrentEthValue());
     user.setSolPrice(cryptoPriceClient.getCurrentSolValue());
     user.setNumDepositsForInterest(user.getNumDepositsForInterest());
+    user.setScore(TestudoBankRepository.scoreCalc(jdbcTemplate, user.getUsername()));
   }
 
   // Converts dollar amounts in frontend to penny representation in backend MySQL DB
@@ -297,7 +306,11 @@ public class MvcController {
       return "welcome";
     }
 	}
-
+  @PostMapping("/score")
+  public String scorePage(@ModelAttribute("user") User user){
+    updateAccountInfo(user);
+    return "score_info";
+  }
   /**
    * HTML POST request handler for the Deposit Form page.
    * 
@@ -419,7 +432,7 @@ public class MvcController {
     int userOverdraftBalanceInPennies = TestudoBankRepository.getCustomerOverdraftBalanceInPennies(jdbcTemplate, userID);
     if (userWithdrawAmtInPennies > userBalanceInPennies) { // if withdraw amount exceeds main balance, withdraw into overdraft with interest fee
       int excessWithdrawAmtInPennies = userWithdrawAmtInPennies - userBalanceInPennies;
-      int newOverdraftIncreaseAmtAfterInterestInPennies = (int)(excessWithdrawAmtInPennies * INTEREST_RATE);
+      int newOverdraftIncreaseAmtAfterInterestInPennies = (int)(excessWithdrawAmtInPennies * 1.02);
       int newOverdraftBalanceInPennies = userOverdraftBalanceInPennies + newOverdraftIncreaseAmtAfterInterestInPennies;
 
       // abort withdraw transaction if new overdraft balance exceeds max overdraft limit
@@ -530,7 +543,7 @@ public class MvcController {
         // fetch updated overdraft balance with extra interest rate applied
         double updatedOverdraftBalanceInPennies = TestudoBankRepository.getCustomerOverdraftBalanceInPennies(jdbcTemplate, userID);
         // reverse extra application of interest rate since customer was already in overdraft
-        int newOverdraftBalanceInPennies = (int) (updatedOverdraftBalanceInPennies / 1.02);
+        int newOverdraftBalanceInPennies = (int) (updatedOverdraftBalanceInPennies/ 1.02);
 
         if (overdraftLogs.size() != 0) {
           // remove extra entry from overdraft logs

@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -208,19 +210,78 @@ public class TestudoBankRepository {
   }
 
   public static double APYcalc(JdbcTemplate jdbcTemplate, String customerID){
-    // String furthestTransaction = String.format("SELECT DATE(Timestamp) FROM TransactionHistory WHERE CustomerID='%s' ORDER BY Timestamp ASC LIMIT 1;", customerID);
-    // java.sql.Date date = jdbcTemplate.queryForObject(furthestTransaction, java.sql.Date);
-    // long millis = System.currentTimeMillis();
-    // java.sql.Date date = new java.sql.Date(millis);
-    // long diffInMillies = Math.abs(secondDate.getTime() - firstDate.getTime());
-    // int diff = TimeUnit.DAYS.convert(diffInMillies, TimeUnit.MILLISECONDS);
-    // int years = diff/365; 
-
-    //I am very unsure if I'm supposed to be calculating compound interest or just apply 1.5 each time 
-
+    //start by calculating interest based on score 
+    double interest = interestCalc(jdbcTemplate, customerID);
     int balance = getCustomerCashBalanceInPennies(jdbcTemplate, customerID);
-    double interestAdd = .015*balance; 
+    double interestAdd = interest*balance; 
     return interestAdd;
 
   }
+
+  //FINAL PROJECT
+
+  /*This function calculates the users score based on the percentage of their transactions that are deposits, 
+  *as well if the individual owns any cryptocurrency through the bank. The score is decreased by the
+  *presence of an overdraft balance. 
+  */
+  public static double scoreCalc(JdbcTemplate jdbcTemplate, String customerID){
+    //means customer is not actively in overdraft & the new score can be calculated
+    double totalScore = 0;
+    String transHistory = String.format("SELECT COUNT(*) FROM TransactionHistory WHERE CustomerID='%s';",customerID);
+    String depositHistory = String.format("SELECT COUNT(*) FROM TransactionHistory WHERE CustomerID='%s' AND Action='Deposit';",
+    customerID);
+    double sizeOfHist = jdbcTemplate.queryForObject(transHistory, Integer.class);
+    double sizeOfDepHist = jdbcTemplate.queryForObject(depositHistory, Integer.class);
+    if(sizeOfHist > 0){
+      String overdrafted = String.format("SELECT * FROM OverdraftLogs WHERE CustomerID='%s';", customerID);
+      List<Map<String,Object>> overdraftLog = getOverdraftLogs(jdbcTemplate, customerID);
+
+      double transScore = sizeOfDepHist/sizeOfHist;
+      int overdraftScore = 0;
+      if(overdraftLog.size() > 0){
+        overdraftScore = 1; 
+      }
+
+      int cryptoScore = 0;
+      if (getCustomerCryptoBalance(jdbcTemplate, customerID, "ETH").isPresent())
+        cryptoScore++;
+      if(getCustomerCryptoBalance(jdbcTemplate, customerID, "SOL").isPresent())
+        cryptoScore++;
+      
+      //80% of score comes from transaction history 
+      //20% is crypto score
+      //loses points if ever been in overdraft
+      totalScore = (8*transScore) + cryptoScore - overdraftScore;
+      if(totalScore < 0){
+        totalScore = 0;
+      }
+    }
+    BigDecimal bd = new BigDecimal(totalScore).setScale(2, RoundingMode.HALF_UP);
+
+    return bd.doubleValue();
+  }
+
+  //This function divides the interest rates into rankings based on the users score
+  //the function ulimately returns the new interest rate 
+  public static double interestCalc(JdbcTemplate jdbcTemplate, String customerID){
+    double score = scoreCalc(jdbcTemplate, customerID);
+    double interest = 0.00;
+    if(score < 1){
+      interest = 0.001;
+    }
+    if(score >= 1){
+      interest += .005;
+    }
+    if(score > 3){
+      interest += .005;
+    }
+    if(score > 6){
+      interest += .005;
+    }
+    if(score > 8){
+      interest += .005;
+    }
+    return interest;
+  }
+
 }
